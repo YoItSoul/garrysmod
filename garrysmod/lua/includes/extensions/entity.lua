@@ -1,76 +1,73 @@
-
-local meta = FindMetaTable( "Entity" )
+-- Cache frequently used global functions/tables locally
+local meta = FindMetaTable("Entity")
+local rawget = rawget
+local tobool = tobool
 
 -- Return if there's nothing to add on to
-if ( !meta ) then return end
+if not meta then return end
 
+-- Return a default value if m_bPlayPickupSound is not set
 function meta:GetShouldPlayPickupSound()
-	return self.m_bPlayPickupSound || false
+    return rawget(self, "m_bPlayPickupSound") or false
 end
 
-function meta:SetShouldPlayPickupSound( bPlaySound )
-	self.m_bPlayPickupSound = tobool( bPlaySound ) || false
+-- Set m_bPlayPickupSound to the boolean value of bPlaySound
+function meta:SetShouldPlayPickupSound(bPlaySound)
+    self.m_bPlayPickupSound = tobool(bPlaySound)
 end
 
---
 -- Entity index accessor. This used to be done in engine, but it's done in Lua now because it's faster
---
-function meta:__index( key )
+function meta:__index(key)
+    -- Search the metatable. We can do this without dipping into C, so we do it first.
+    local val = meta[key]
+    if val ~= nil then return val end
 
-	--
-	-- Search the metatable. We can do this without dipping into C, so we do it first.
-	--
-	local val = meta[ key ]
-	if ( val != nil ) then return val end
+    -- Search the entity table
+    local tab = rawget(self, "table")
+    if tab then
+        local val = rawget(tab, key)
+        if val ~= nil then return val end
+    end
 
-	--
-	-- Search the entity table
-	--
-	local tab = self:GetTable()
-	if ( tab ) then
-		local val = tab[ key ]
-		if ( val != nil ) then return val end
-	end
+    -- Legacy: sometimes use self.Owner to get the owner.. so lets carry on supporting that stupidness
+    -- This needs to be retired, just like self.Entity was.
+    if key == "Owner" then return meta.GetOwner(self) end
 
-	--
-	-- Legacy: sometimes use self.Owner to get the owner.. so lets carry on supporting that stupidness
-	-- This needs to be retired, just like self.Entity was.
-	--
-	if ( key == "Owner" ) then return meta.GetOwner( self ) end
-
-	return nil
-
+    return nil
 end
+
 
 --[[---------------------------------------------------------
 	Name: Short cut to add entities to the table
 -----------------------------------------------------------]]
-function meta:GetVar( name, default )
+-- Cache frequently used global functions/tables locally
+local meta = FindMetaTable("Entity")
+local isentity = isentity
 
-	local Val = self:GetTable()[ name ]
-	if ( Val == nil ) then return default end
-
-	return Val
-
+-- Return the value associated with 'name' or 'default' if it doesn't exist
+function meta:GetVar(name, default)
+    local tab = self:GetTable()
+    local val = tab and tab[name]
+    return val ~= nil and val or default
 end
 
-if ( SERVER ) then
+if SERVER then
+    -- Set the creator of the entity
+    function meta:SetCreator(ply)
+        if ply == nil then
+            ply = NULL
+        elseif not isentity(ply) then
+            error("bad argument #1 to 'SetCreator' (Entity expected, got " .. type(ply) .. ")", 2)
+        end
+        self.m_PlayerCreator = ply
+    end
 
-	function meta:SetCreator( ply --[[= NULL]] )
-		if ( ply == nil ) then
-			ply = NULL
-		elseif ( !isentity( ply ) ) then
-			error( "bad argument #1 to 'SetCreator' (Entity expected, got " .. type( ply ) .. ")", 2 )
-		end
-
-		self.m_PlayerCreator = ply
-	end
-
-	function meta:GetCreator()
-		return self.m_PlayerCreator || NULL
-	end
-
+    -- Get the creator of the entity
+    function meta:GetCreator()
+        return self.m_PlayerCreator or NULL
+    end
 end
+
 
 --[[---------------------------------------------------------
 	Name: Returns true if the entity has constraints attached to it
